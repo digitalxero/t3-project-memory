@@ -1920,38 +1920,64 @@ var sync2 = sync;
 var gen2 = gen;
 
 // src/store.mjs
-import { mkdirSync, readFileSync, openSync, writeFileSync, fsyncSync, closeSync, renameSync, unlinkSync, readdirSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  openSync,
+  writeFileSync,
+  fsyncSync,
+  closeSync,
+  renameSync,
+  unlinkSync,
+  readdirSync,
+  statSync
+} from "node:fs";
 import { join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 var text = (value, max, name) => {
-  if (typeof value !== "string" || !value.trim() || value.length > max || Buffer.byteLength(value) > max * 2 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value)) throw new Error(`Invalid ${name} (1\u2013${max} characters required).`);
+  if (typeof value !== "string" || !value.trim() || value.length > max || Buffer.byteLength(value) > max * 2 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(value))
+    throw new Error(`Invalid ${name} (1\u2013${max} characters required).`);
   return value.trim();
 };
 var integer = (value, fallback, max) => {
   if (value === void 0) return fallback;
-  if (!Number.isInteger(value) || value < 1 || value > max) throw new Error(`Expected an integer from 1 to ${max}.`);
+  if (!Number.isInteger(value) || value < 1 || value > max)
+    throw new Error(`Expected an integer from 1 to ${max}.`);
   return value;
 };
-var tokens = (value) => [...new Set(value.normalize("NFKC").toLocaleLowerCase("en-US").match(/[\p{L}\p{N}_]+/gu) ?? [])];
+var tokens = (value) => [
+  ...new Set(
+    value.normalize("NFKC").toLocaleLowerCase("en-US").match(/[\p{L}\p{N}_]+/gu) ?? []
+  )
+];
 function createStore(directory, environmentId) {
   mkdirSync(directory, { recursive: true, mode: 448 });
-  const path = (project) => join(directory, createHash("sha256").update(text(project, 200, "project")).digest("hex") + ".json");
+  const path = (project) => join(
+    directory,
+    createHash("sha256").update(text(project, 200, "project")).digest("hex") + ".json"
+  );
   const read = (project) => {
     let raw;
     try {
+      if (statSync(path(project)).size > 32e6)
+        throw new Error("Memory file exceeds recovery limit.");
       raw = readFileSync(path(project), "utf8");
     } catch (e) {
-      if (e.code === "ENOENT") return { version: 1, environmentId, projectId: project, enabled: false, entries: [] };
+      if (e.code === "ENOENT")
+        return { version: 1, environmentId, projectId: project, enabled: false, entries: [] };
       throw e;
     }
-    if (Buffer.byteLength(raw) > 12e6) throw new Error("Memory file exceeds recovery limit. Restore an export offline.");
+    if (Buffer.byteLength(raw) > 32e6)
+      throw new Error("Memory file exceeds recovery limit. Restore an export offline.");
     const data = JSON.parse(raw);
-    if (data.version !== 1 || data.environmentId !== environmentId || data.projectId !== project || typeof data.enabled !== "boolean" || !Array.isArray(data.entries) || data.entries.length > 500) throw new Error("Invalid memory file or environment identity. Restore an export offline.");
+    if (data.version !== 1 || data.environmentId !== environmentId || data.projectId !== project || typeof data.enabled !== "boolean" || !Array.isArray(data.entries) || data.entries.length > 500)
+      throw new Error("Invalid memory file or environment identity. Restore an export offline.");
     for (const entry of data.entries) {
       text(entry.id, 200, "id");
       text(entry.content, 2e3, "content");
       text(entry.source, 500, "source");
-      if (!Array.isArray(entry.history) || entry.history.length > 5) throw new Error("Invalid correction history.");
+      if (!Array.isArray(entry.history) || entry.history.length > 5)
+        throw new Error("Invalid correction history.");
     }
     return data;
   };
@@ -1976,7 +2002,10 @@ function createStore(directory, environmentId) {
   };
   const enabled = (project) => {
     const data = read(project);
-    if (!data.enabled) throw new Error("Agent memory is disabled for this project. Ask the user to enable it in Shared Project Memory.");
+    if (!data.enabled)
+      throw new Error(
+        "Agent memory is disabled for this project. Ask the user to enable it in Shared Project Memory."
+      );
     return data;
   };
   return {
@@ -1999,13 +2028,32 @@ function createStore(directory, environmentId) {
       if (input.id !== void 0) {
         const entry2 = data.entries.find((e) => e.id === input.id);
         if (!entry2) throw new Error("Memory entry not found in this project.");
-        entry2.history = [...entry2.history, { content: entry2.content, source: entry2.source, provenance: entry2.provenance, at: entry2.updatedAt }].slice(-5);
+        entry2.history = [
+          ...entry2.history,
+          {
+            content: entry2.content,
+            source: entry2.source,
+            provenance: entry2.provenance,
+            at: entry2.updatedAt
+          }
+        ].slice(-5);
         Object.assign(entry2, { content, source, provenance, updatedAt: now });
         write(data);
         return entry2;
       }
-      if (data.entries.length >= 500) throw new Error("Project memory is full (500 entries). Correct or forget an existing entry first.");
-      const entry = { id: randomUUID(), content, source, provenance, createdAt: now, updatedAt: now, history: [] };
+      if (data.entries.length >= 500)
+        throw new Error(
+          "Project memory is full (500 entries). Correct or forget an existing entry first."
+        );
+      const entry = {
+        id: randomUUID(),
+        content,
+        source,
+        provenance,
+        createdAt: now,
+        updatedAt: now,
+        history: []
+      };
       data.entries.push(entry);
       write(data);
       return entry;
@@ -2014,11 +2062,25 @@ function createStore(directory, environmentId) {
       const data = enabled(project), query = input.query === void 0 ? "" : text(input.query, 500, "query");
       const terms = tokens(query), limit = integer(input.limit, 5, 20), budget = integer(input.budget, 8e3, 2e4);
       if (query && terms.length === 0) return { entries: [], truncated: false };
-      const ranked = data.entries.map((e) => ({ entry: e, score: terms.reduce((n, t) => n + (tokens(e.content + " " + e.source).includes(t) ? 1 : 0), 0) })).filter((r) => !terms.length || r.score === terms.length).sort((a, b) => b.score - a.score || b.entry.updatedAt.localeCompare(a.entry.updatedAt) || a.entry.id.localeCompare(b.entry.id));
+      const ranked = data.entries.map((e) => ({
+        entry: e,
+        score: terms.reduce(
+          (n, t) => n + (tokens(e.content + " " + e.source).includes(t) ? 1 : 0),
+          0
+        )
+      })).filter((r) => !terms.length || r.score === terms.length).sort(
+        (a, b) => b.score - a.score || b.entry.updatedAt.localeCompare(a.entry.updatedAt) || a.entry.id.localeCompare(b.entry.id)
+      );
       const entries = [];
       let used = 0;
       for (const { entry } of ranked) {
-        const result2 = { id: entry.id, content: entry.content, source: entry.source, provenance: entry.provenance, updatedAt: entry.updatedAt };
+        const result2 = {
+          id: entry.id,
+          content: entry.content,
+          source: entry.source,
+          provenance: entry.provenance,
+          updatedAt: entry.updatedAt
+        };
         const size = JSON.stringify(result2).length;
         if (entries.length >= limit || used + size > budget) break;
         entries.push(result2);
@@ -2044,7 +2106,15 @@ function createStore(directory, environmentId) {
     export(project, page = 1) {
       const data = read(project);
       const index = integer(page, 1, 1e3);
-      return { version: 1, environmentId, projectId: project, enabled: data.enabled, page: index, hasMore: index * 3 < data.entries.length, entries: data.entries.slice((index - 1) * 3, index * 3) };
+      return {
+        version: 1,
+        environmentId,
+        projectId: project,
+        enabled: data.enabled,
+        page: index,
+        hasMore: index * 3 < data.entries.length,
+        entries: data.entries.slice((index - 1) * 3, index * 3)
+      };
     }
   };
 }
@@ -2054,84 +2124,260 @@ var plugin_default = {
   apiVersion: 1,
   id: "project-memory",
   name: "Shared Project Memory",
-  version: "1.0.0",
+  version: "0.1.0",
   activate: (context2) => gen2(function* () {
-    if (!context2.capabilities?.includes("command-invocation-context") || !context2.environmentId || !context2.notifications) throw new Error("Requires prototype host with command-invocation-context, environment identity and project targets.");
+    if (!context2.capabilities?.includes("command-invocation-context") || !context2.environmentId || !context2.notifications)
+      throw new Error(
+        "Requires prototype host with command-invocation-context, environment identity and project targets."
+      );
     const environmentId = yield* context2.environmentId;
     const store = createStore(context2.dataDirectory, environmentId);
-    let selected, page = 1;
-    const attempt = (fn2) => sync2(() => {
+    let selected, page = 1, lastExport, message;
+    const attempt = (fn2, invocation) => sync2(() => {
       try {
         return fn2();
       } catch (e) {
+        if (invocation?.audience === "client") message = e.message;
         return { $t3: "notice", tone: "danger", text: e.message };
       }
     });
     const user = (invocation) => {
-      if (invocation?.audience !== "client") throw new Error("This command is available only to users.");
+      if (invocation?.audience !== "client")
+        throw new Error("This command is available only to users.");
     };
     const project = (input, invocation) => {
       if (invocation?.audience === "agent") {
-        if (invocation.environmentId !== environmentId || !invocation.projectId || !invocation.threadId) throw new Error("A live T3 thread in this environment is required.");
+        if (invocation.environmentId !== environmentId || !invocation.projectId || !invocation.threadId)
+          throw new Error("A live T3 thread in this environment is required.");
         return invocation.projectId;
       }
       user(invocation);
-      if (typeof input.projectId !== "string" || !input.projectId) throw new Error("Select a project first.");
+      if (typeof input.projectId !== "string" || !input.projectId)
+        throw new Error("Select a project first.");
       return input.projectId;
     };
     const provenance = (invocation) => invocation.audience === "agent" ? { actor: "agent", threadId: invocation.threadId, environmentId } : { actor: "user", environmentId };
-    const command = (id, title, agent, write, run) => ({ id, title, description: title, agent, permission: write ? "orchestration:operate" : "orchestration:read", run: (input, invocation) => attempt(() => run(input, invocation)) });
+    const command = (id, title, agent, write, run) => ({
+      id,
+      title,
+      description: title,
+      agent,
+      permission: write ? "orchestration:operate" : "orchestration:read",
+      run: (input, invocation) => attempt(() => {
+        if (write || invocation?.audience === "client") lastExport = void 0;
+        const result2 = run(input, invocation);
+        if (invocation?.audience === "client") {
+          message = `${title}: done.`;
+          if (id === "export") {
+            lastExport = result2;
+            selected = result2.projectId;
+          }
+        }
+        return result2;
+      }, invocation)
+    });
     const commands = [
-      command("remember", "Remember or correct learned project knowledge. Supply content and source; supply id to correct. Project comes from the calling thread.", true, true, (i, c) => store.remember(project(i, c), i, provenance(c))),
-      command("recall", "Recall project knowledge with lexical AND search. Optional query, limit (1\u201320), budget (1\u201320000 characters). No automatic prompt injection.", true, false, (i, c) => store.recall(project(i, c), i)),
-      command("forget", "Forget an entry by id in the calling project. Removes its correction history too.", true, true, (i, c) => store.forget(project(i, c), i.id, c.audience === "agent")),
-      command("configure", "Enable or disable agent memory for this project", false, true, (i, c) => {
-        user(c);
-        return store.configure(project(i, c), i.enabled);
-      }),
-      command("clear", "Delete all project memory and disable agent access", false, true, (i, c) => {
-        user(c);
-        if (i.confirm !== "DELETE") throw new Error("Type DELETE to clear this project.");
-        return store.clear(project(i, c));
-      }),
-      command("export", "Export project memory, including provenance and recent corrections, three entries per page", false, false, (i, c) => {
-        user(c);
-        return store.export(project(i, c), i.page);
-      }),
+      command(
+        "remember",
+        "Remember or correct learned project knowledge. Supply content and source; supply id to correct. Project comes from the calling thread.",
+        true,
+        true,
+        (i, c) => store.remember(project(i, c), i, provenance(c))
+      ),
+      command(
+        "recall",
+        "Recall project knowledge with lexical AND search. Optional query, limit (1\u201320), budget (1\u201320000 characters). No automatic prompt injection.",
+        true,
+        false,
+        (i, c) => store.recall(project(i, c), i)
+      ),
+      command(
+        "forget",
+        "Forget an entry by id in the calling project. Removes its correction history too.",
+        true,
+        true,
+        (i, c) => store.forget(project(i, c), i.id, c.audience === "agent")
+      ),
+      command(
+        "configure",
+        "Enable or disable agent memory for this project",
+        false,
+        true,
+        (i, c) => {
+          user(c);
+          return store.configure(project(i, c), i.enabled);
+        }
+      ),
+      command(
+        "clear",
+        "Delete all project memory and disable agent access",
+        false,
+        true,
+        (i, c) => {
+          user(c);
+          if (i.confirm !== "DELETE") throw new Error("Type DELETE to clear this project.");
+          return store.clear(project(i, c));
+        }
+      ),
+      command(
+        "export",
+        "Export project memory, including provenance and recent corrections, three entries per page",
+        false,
+        false,
+        (i, c) => {
+          user(c);
+          return store.export(project(i, c), i.page);
+        }
+      ),
       command("select", "Inspect project memory", false, false, (i, c) => {
         user(c);
-        selected = project(i, c);
+        selected = project({ ...i, projectId: i.project ?? i.projectId }, c);
         page = Number.isInteger(Number(i.page)) && Number(i.page) > 0 ? Number(i.page) : 1;
         return { selected, page };
       })
     ];
     const field = (name, label, value, kind = "text") => ({ name, label, kind, value });
-    const form = (id, label, cmd, input, fields) => ({ id, kind: "form", label, command: cmd, input, fields });
-    return { commands, views: [{ id: "memory", title: "Shared Project Memory", location: "settings-page", permission: "orchestration:read", read: () => gen2(function* () {
-      const targets = yield* context2.notifications.targets;
-      const projects = [...new Map([...targets.projects, ...store.projects().map((id) => ({ id, label: id }))].map((p) => [p.id, p])).values()].slice(0, 99);
-      const blocks = [{ id: "about", kind: "text", text: "Agent-accessible learned knowledge, off by default for each project. Recall is pull-only. Disabling retains entries for inspection/export/delete; clearing deletes entries and disables access. This environment only: no automatic sync or private Project Notes access." }];
-      if (!projects.length) return { title: "Shared Project Memory", blocks: [...blocks, { id: "empty", kind: "text", text: "Create a project on this environment first." }] };
-      blocks.push(form("choose", "Inspect project", "select", {}, [{ name: "projectId", label: "Project", kind: "select", value: selected ?? projects[0].id, options: projects.map((p) => ({ label: p.label.slice(0, 200), value: p.id })) }, field("page", "Page", page, "number")]));
-      if (!selected) return { title: "Shared Project Memory", blocks };
-      const data = store.read(selected), input = { projectId: selected };
-      blocks.push({ id: "identity", kind: "text", text: `Environment: ${environmentId}
+    const form = (id, label, cmd, input, fields) => ({
+      id,
+      kind: "form",
+      label,
+      command: cmd,
+      input,
+      fields
+    });
+    return {
+      commands,
+      views: [
+        {
+          id: "memory",
+          title: "Shared Project Memory",
+          location: "settings-page",
+          permission: "orchestration:read",
+          read: () => gen2(function* () {
+            const targets = yield* context2.notifications.targets;
+            const projects = [
+              ...new Map(
+                [...store.projects().map((id) => ({ id, label: id })), ...targets.projects].map(
+                  (p) => [p.id, p]
+                )
+              ).values()
+            ].slice(0, 99);
+            const blocks = [
+              {
+                id: "about",
+                kind: "text",
+                text: "Agent-accessible learned knowledge, off by default for each project. Recall is pull-only. Disabling retains entries for inspection/export/delete; clearing deletes entries and disables access. This environment only: no automatic sync or private Project Notes access."
+              }
+            ];
+            if (!projects.length)
+              return {
+                title: "Shared Project Memory",
+                blocks: [
+                  ...blocks,
+                  {
+                    id: "empty",
+                    kind: "text",
+                    text: "Create a project on this environment first."
+                  }
+                ]
+              };
+            blocks.push(
+              form("choose", "Inspect project", "select", {}, [
+                {
+                  name: "project",
+                  label: "Project",
+                  kind: "select",
+                  value: selected ?? projects[0].id,
+                  options: projects.map((p) => ({ label: p.label.slice(0, 200), value: p.id }))
+                },
+                field("page", "Page", page, "number")
+              ])
+            );
+            if (!selected) return { title: "Shared Project Memory", blocks };
+            if (message) blocks.push({ id: "feedback", kind: "text", text: message });
+            const data = store.read(selected), input = { projectId: selected };
+            blocks.push({
+              id: "identity",
+              kind: "text",
+              text: `Environment: ${environmentId}
 Project: ${selected}
-${data.entries.length}/500 entries. Page ${page}.` });
-      blocks.push(form("enabled", "Agent access", "configure", input, [field("enabled", "Enable agent memory", data.enabled, "boolean")]));
-      blocks.push(form("add", "Remember knowledge", "remember", input, [field("content", "Knowledge", ""), field("source", "Source or reason", "")]));
-      for (const entry of data.entries.slice((page - 1) * 3, page * 3)) {
-        blocks.push({ id: "meta-" + entry.id, kind: "text", text: `${entry.id}
+${data.entries.length}/500 entries. Page ${page}.`
+            });
+            blocks.push(
+              form("enabled", "Agent access", "configure", input, [
+                field("enabled", "Enable agent memory", data.enabled, "boolean")
+              ])
+            );
+            blocks.push(
+              form("add", "Remember knowledge", "remember", input, [
+                field("content", "Knowledge", ""),
+                field("source", "Source or reason", "")
+              ])
+            );
+            for (const entry of lastExport ? [] : data.entries.slice((page - 1) * 3, page * 3)) {
+              blocks.push({
+                id: "meta-" + entry.id,
+                kind: "text",
+                text: `${entry.id}
 Created ${entry.createdAt}; updated ${entry.updatedAt}
 ${JSON.stringify(entry.provenance)}
-Recent corrections: ${JSON.stringify(entry.history)}` });
-        blocks.push(form("edit-" + entry.id, "Correct memory", "remember", { ...input, id: entry.id }, [field("content", "Knowledge", entry.content), field("source", "Source or reason", entry.source)]));
-        blocks.push({ id: "delete-" + entry.id, kind: "actions", actions: [{ id: "forget", label: "Delete entry and history", command: "forget", input: { ...input, id: entry.id } }] });
-      }
-      blocks.push(form("export", "Export JSON (three entries per page)", "export", input, [field("page", "Export page", page, "number")]));
-      blocks.push(form("clear", "Clear all memory and disable", "clear", input, [field("confirm", "Type DELETE to permanently clear this project", "")]));
-      return { title: "Shared Project Memory", blocks };
-    }) }] };
+Recent corrections: ${JSON.stringify(entry.history).slice(0, 12e3)} (full history in export)`
+              });
+              blocks.push(
+                form(
+                  "edit-" + entry.id,
+                  "Correct memory",
+                  "remember",
+                  { ...input, id: entry.id },
+                  [
+                    field("content", "Knowledge", entry.content),
+                    field("source", "Source or reason", entry.source)
+                  ]
+                )
+              );
+              blocks.push({
+                id: "delete-" + entry.id,
+                kind: "actions",
+                actions: [
+                  {
+                    id: "forget",
+                    label: "Delete entry and history",
+                    command: "forget",
+                    input: { ...input, id: entry.id }
+                  }
+                ]
+              });
+            }
+            blocks.push(
+              form("export", "Export JSON (three entries per page)", "export", input, [
+                field("page", "Export page", page, "number")
+              ])
+            );
+            if (lastExport) {
+              blocks.push({
+                id: "export-help",
+                kind: "text",
+                text: "Copy the JSON chunks below in order and concatenate without separators. This is one export page; repeat for subsequent pages while hasMore is true. Any next command closes this export view."
+              });
+              const characters = Array.from(JSON.stringify(lastExport));
+              for (let offset = 0; offset < characters.length; offset += 4e3) {
+                blocks.push({
+                  id: `export-${offset}`,
+                  kind: "text",
+                  text: characters.slice(offset, offset + 4e3).join("")
+                });
+              }
+            }
+            blocks.push(
+              form("clear", "Clear all memory and disable", "clear", input, [
+                field("confirm", "Type DELETE to permanently clear this project", "")
+              ])
+            );
+            return { title: "Shared Project Memory", blocks };
+          })
+        }
+      ]
+    };
   })
 };
 export {

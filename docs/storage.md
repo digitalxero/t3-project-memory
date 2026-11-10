@@ -54,7 +54,9 @@ substitute for host authentication and plugin scoping.
 
 Practical experiment: installed rag-lite-ts@2.3.1, opened and initialized its real
 SQLite schema, initialized its actual WASM worker, inserted vector 1, searched it
-and saved the binary index. Search returned neighbor 1 at distance 0. Native
+and saved the binary index. Search returned neighbor 1 at distance 0. Reopened that saved index and repeated
+the search successfully. Real SQLite document/chunk insertion, correction,
+connection reopen and cascading deletion also passed. Native
 sqlite3, hnswlib-wasm, Transformers/ONNX, parsers and optional sharp expand the
 packaging surface. The combined candidate install occupied approximately 949 MiB
 on this Linux host, excluding model downloads. That is not an individual package

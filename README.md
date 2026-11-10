@@ -1,7 +1,9 @@
 # Shared Project Memory for T3 Code
 
 Provider-neutral learned project knowledge through normal T3 plugin MCP commands.
-Requires the **prototype host fork**, not upstream T3 Code. No upstream approval is
+Requires the **prototype host fork**, not upstream T3 Code.
+Minimum verified host: [djgilcrease/t3code `99c9ae3f3f844e6d6988809a985a44f68ab21543`](https://github.com/djgilcrease/t3code/commit/99c9ae3f3f844e6d6988809a985a44f68ab21543)
+on `t3/create-plugin-system` ([host PR #2](https://github.com/djgilcrease/t3code/pull/2)). No upstream approval is
 implied. Install this repository URL in **Settings → Plugins**:
 
 https://github.com/digitalxero/t3-project-memory
@@ -25,7 +27,9 @@ entries per page; collect all pages when `hasMore` is true). The inspector's
 selected project/page is shared by clients on that environment; every submitted
 form carries its own explicit project, so another client's selection cannot
 redirect a mutation. Users can edit and delete while agent access is disabled.
-Export is a JSON command result that can be copied from the host's result panel.
+Export appears as JSON text blocks in the memory view. Copy their
+text in order and concatenate without separators. Repeat for every export page.
+The next command closes the export output.
 Clearing requires typing `DELETE`, deletes entries and correction history, and
 turns access off. Disabling the plugin stops all command access while retaining
 data. Host removal clears its managed data. External backups/exports and text

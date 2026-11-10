@@ -1,5 +1,7 @@
 T3 Code plugin contracts and portable contribution conventions derive from
 https://github.com/djgilcrease/t3code (MIT, original notices retained in LICENSE).
-Effect 4.1.2 is bundled under MIT; its legal comments are retained in the bundle.
+The public plugin SDK is vendored from host commit b71d60c41929055a4aeb8cc5f982726205b1c515
+(integrated as 99c9ae3f3f844e6d6988809a985a44f68ab21543).
+Effect 4.1.2 is bundled under MIT; see licenses/Effect-MIT.txt.
 Demand and behavior inspiration: SiavZ's proposal in T3 Code discussion #15858.
 No implementation code from SiavZ, veqlite or rag-lite-ts is reused.

@@ -1,0 +1,6 @@
+{
+  "name": "@digitalxero/t3-project-memory", "version": "1.0.0", "private": true,
+  "type": "module", "license": "MIT", "engines": {"node": ">=24.10"},
+  "scripts": {"build": "node scripts/build.mjs", "test": "node --test test/*.test.mjs", "verify": "npm test && npm run build"},
+  "dependencies": {"effect": "4.1.2"}, "devDependencies": {"esbuild": "0.28.2"}
+}
